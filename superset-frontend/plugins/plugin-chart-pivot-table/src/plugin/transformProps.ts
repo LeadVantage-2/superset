@@ -190,6 +190,10 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
     columnFormats,
     currencyFormats,
     metricsLayout,
+    // AnalyticsHQ patch (apache/superset#32260): custom form_data fields that make
+    // ratio metrics total correctly. Absent on stock charts => default behaviour.
+    ratioMetrics: (formData as any).ratio_metrics,
+    hiddenMetrics: (formData as any).hidden_metrics,
     metricColorFormatters,
     dateFormatters,
     onContextMenu,

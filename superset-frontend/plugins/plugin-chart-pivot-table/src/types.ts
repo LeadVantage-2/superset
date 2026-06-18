@@ -77,6 +77,11 @@ interface PivotTableCustomizeProps {
   columnFormats: JsonObject;
   currencyFormats: Record<string, Currency>;
   metricsLayout?: MetricsLayoutEnum;
+  // AnalyticsHQ patch: ratio metrics total correctly as SUM(num)/SUM(den).
+  // ratioMetrics maps a displayed metric label -> [numeratorMetric, denominatorMetric];
+  // hiddenMetrics are queried (so num/den are in the data) but not shown as their own blocks.
+  ratioMetrics?: Record<string, [string, string]>;
+  hiddenMetrics?: string[];
   metricColorFormatters: ColorFormatters;
   dateFormatters: Record<string, DateFormatter | undefined>;
   legacy_order_by: QueryFormMetric[] | QueryFormMetric | null;

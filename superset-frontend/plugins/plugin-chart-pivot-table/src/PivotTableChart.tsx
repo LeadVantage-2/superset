@@ -252,6 +252,8 @@ export default function PivotTableChart(props: PivotTableProps) {
     columnFormats,
     currencyFormats,
     metricsLayout,
+    ratioMetrics,
+    hiddenMetrics,
     metricColorFormatters,
     dateFormatters,
     onContextMenu,
@@ -333,10 +335,31 @@ export default function PivotTableChart(props: PivotTableProps) {
 
   const metricNames = useMemo(
     () =>
-      metrics.map((metric: string | AdhocMetric) =>
-        typeof metric === 'string' ? metric : (metric.label as string),
-      ),
-    [metrics],
+      metrics
+        .map((metric: string | AdhocMetric) =>
+          typeof metric === 'string' ? metric : (metric.label as string),
+        )
+        // AnalyticsHQ patch: hidden metrics (ratio numerators/denominators) stay in the
+        // query/data (carried onto each record via `...record`) but are not displayed.
+        .filter((name: string) => !(hiddenMetrics ?? []).includes(name)),
+    [metrics, hiddenMetrics],
+  );
+
+  // AnalyticsHQ patch: when ratioMetrics is set, make the chosen aggregator ratio-aware
+  // so ratio metrics total as SUM(num)/SUM(den). Empty/absent => stock factory unchanged.
+  const ratioAwareAggregatorsFactory = useMemo(
+    () =>
+      ratioMetrics && Object.keys(ratioMetrics).length > 0
+        ? (formatter: NumberFormatter) => ({
+            ...aggregatorsFactory(formatter),
+            [aggregateFunction]: aggregatorTemplates.ratioAware(
+              ratioMetrics,
+              METRIC_KEY,
+              formatter,
+            ),
+          })
+        : aggregatorsFactory,
+    [ratioMetrics, aggregateFunction],
   );
 
   const unpivotedData = useMemo(
@@ -698,7 +721,7 @@ export default function PivotTableChart(props: PivotTableProps) {
           data={unpivotedData}
           rows={rows}
           cols={cols}
-          aggregatorsFactory={aggregatorsFactory}
+          aggregatorsFactory={ratioAwareAggregatorsFactory}
           defaultFormatter={defaultFormatter}
           customFormatters={metricFormatters}
           aggregatorName={aggregateFunction}

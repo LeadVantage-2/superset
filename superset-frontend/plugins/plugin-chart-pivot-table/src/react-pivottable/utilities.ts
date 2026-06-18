@@ -572,6 +572,67 @@ const baseAggregatorTemplates = {
     };
   },
 
+  // AnalyticsHQ patch (apache/superset#32260): a Sum that is ratio-aware. For metrics
+  // listed in `ratioMetrics` (metricLabel -> [numField, denField]) it accumulates the
+  // numerator and denominator separately and returns SUM(num)/SUM(den) at every cell,
+  // subtotal and grand total; for all other metrics it behaves exactly like `sum`.
+  // It branches on record[metricKey] (the unpivoted Metric dimension) — every record in
+  // a pivot cell shares one metric, and the unpivot spreads all queried columns onto each
+  // record, so num/den are always present. Empty `ratioMetrics` => identical to `sum`.
+  ratioAware(
+    ratioMetrics: Record<string, [string, string]>,
+    metricKey: string,
+    formatter = usFmt,
+  ) {
+    return function ([attr]: string[]) {
+      return function () {
+        return {
+          sum: 0 as any,
+          sumNum: 0,
+          sumDenom: 0,
+          isRatio: false,
+          currencySet: new Set<string>(),
+          push(record: PivotRecord) {
+            const pair = ratioMetrics[record[metricKey] as string];
+            if (pair) {
+              this.isRatio = true;
+              const [num, denom] = pair;
+              if (!Number.isNaN(Number(record[num]))) {
+                this.sumNum += parseFloat(String(record[num]));
+              }
+              if (!Number.isNaN(Number(record[denom]))) {
+                this.sumDenom += parseFloat(String(record[denom]));
+              }
+            } else if (Number.isNaN(Number(record[attr]))) {
+              this.sum = record[attr];
+            } else {
+              this.sum += parseFloat(String(record[attr]));
+            }
+            if (
+              record.__currencyColumn &&
+              record[record.__currencyColumn as string]
+            ) {
+              this.currencySet.add(
+                String(record[record.__currencyColumn as string]),
+              );
+            }
+          },
+          value() {
+            if (this.isRatio) {
+              return this.sumDenom === 0 ? null : this.sumNum / this.sumDenom;
+            }
+            return this.sum;
+          },
+          getCurrencies() {
+            return Array.from(this.currencySet);
+          },
+          format: fmtNonString(formatter),
+          numInputs: typeof attr !== 'undefined' ? 0 : 1,
+        };
+      };
+    };
+  },
+
   fractionOf(
     wrapped: (...args: any[]) => any,
     type = 'total',
