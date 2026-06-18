@@ -191,9 +191,11 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
     currencyFormats,
     metricsLayout,
     // AnalyticsHQ patch (apache/superset#32260): custom form_data fields that make
-    // ratio metrics total correctly. Absent on stock charts => default behaviour.
-    ratioMetrics: (formData as any).ratio_metrics,
-    hiddenMetrics: (formData as any).hidden_metrics,
+    // ratio metrics total correctly. rawFormData preserves the exact (snake_case) keys
+    // we set; formData is camelCased by the SuperChart pipeline. Read both to be safe.
+    // Absent on stock charts => default behaviour.
+    ratioMetrics: (rawFormData as any)?.ratio_metrics ?? (formData as any).ratioMetrics,
+    hiddenMetrics: (rawFormData as any)?.hidden_metrics ?? (formData as any).hiddenMetrics,
     metricColorFormatters,
     dateFormatters,
     onContextMenu,
