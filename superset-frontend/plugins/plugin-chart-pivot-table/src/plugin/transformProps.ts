@@ -84,6 +84,7 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
       columnFormats = {},
       currencyFormats = {},
       currencyCodeColumn,
+      metrics: datasourceMetrics = [],
     },
     emitCrossFilters,
     theme,
@@ -120,6 +121,38 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
   } = formData;
   const { selectedFilters } = filterState;
   const granularity = extractTimegrain(rawFormData);
+
+  // AnalyticsHQ patch (apache/superset#32260): make ratio/percentage metrics total
+  // correctly (SUM(num)/SUM(den) at every cell, subtotal, grand total) instead of
+  // summing the per-cell percentages. We DERIVE the mapping from the metrics' own SQL
+  // expressions (Superset strips unknown form_data keys, so we can't pass config there):
+  //   a metric `SUM(a)/SUM(b)` is a ratio whose numerator/denominator are the bare-sum
+  //   metrics `SUM(a)` / `SUM(b)`. Numerator feeders are hidden from display; the
+  //   denominator (e.g. a "Sent" metric) stays visible.
+  const ratioMetrics: Record<string, [string, string]> = {};
+  const hiddenSet = new Set<string>();
+  try {
+    const norm = (e: unknown) => String(e ?? '').replace(/\s+/g, '');
+    const bareSum: Record<string, string> = {};
+    (datasourceMetrics as any[]).forEach((m: any) => {
+      const mm = norm(m.expression).match(/^SUM\((\w+)\)$/i);
+      if (mm) bareSum[mm[1].toLowerCase()] = m.metric_name;
+    });
+    (datasourceMetrics as any[]).forEach((m: any) => {
+      const mm = norm(m.expression).match(/^SUM\((\w+)\)\/SUM\((\w+)\)$/i);
+      if (mm) {
+        const num = bareSum[mm[1].toLowerCase()];
+        const den = bareSum[mm[2].toLowerCase()];
+        if (num && den) {
+          ratioMetrics[m.metric_name] = [num, den];
+          hiddenSet.add(num); // numerator feeders are display-only inputs
+        }
+      }
+    });
+  } catch (e) {
+    // never break rendering on detection
+  }
+  const hiddenMetrics = Array.from(hiddenSet);
 
   const dateFormatters = colnames
     .filter(
@@ -190,12 +223,9 @@ export default function transformProps(chartProps: ChartProps<QueryFormData>) {
     columnFormats,
     currencyFormats,
     metricsLayout,
-    // AnalyticsHQ patch (apache/superset#32260): custom form_data fields that make
-    // ratio metrics total correctly. rawFormData preserves the exact (snake_case) keys
-    // we set; formData is camelCased by the SuperChart pipeline. Read both to be safe.
-    // Absent on stock charts => default behaviour.
-    ratioMetrics: (rawFormData as any)?.ratio_metrics ?? (formData as any).ratioMetrics,
-    hiddenMetrics: (rawFormData as any)?.hidden_metrics ?? (formData as any).hiddenMetrics,
+    // Auto-derived above from the metrics' SUM(x)/SUM(y) expressions (no custom form_data).
+    ratioMetrics,
+    hiddenMetrics,
     metricColorFormatters,
     dateFormatters,
     onContextMenu,
